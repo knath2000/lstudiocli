@@ -45,6 +45,10 @@ Docker binds **only** to `127.0.0.1`. For remote access, use Tailscale with the 
 ssh -N -L 8787:127.0.0.1:8787 seedbox.example
 ```
 
+### Provider verification browser
+
+The Docker deployment includes a persistent Chromium profile exposed through noVNC at `/verify/vnc.html`. Put it behind a reverse proxy that requires authentication; this deployment uses HTTP Basic auth with username `lustre-verify` and the existing API token as the password. Complete provider verification yourself in that browser, close the tab, then retry the job. The worker attaches to the same profile to reuse the resulting session cookies. It does not automate challenges or CAPTCHA solving.
+
 For systemd, create a `lustre` user, install this repository under `/opt/lustrestudio-server`, place the environment file at `/etc/lustrestudio-server.env` with mode `0600`, then install `deploy/lustrestudio-server.service`. Do not bind to a public interface without a reverse proxy, TLS, and authentication.
 
 ## Architecture and provider roadmap

@@ -4,13 +4,16 @@ services:
     env_file: .env
     ports:
       - "127.0.0.1:8787:8787"
+      - "127.0.0.1:6080:6080"
     volumes:
       - ./data:/app/data
       - ./downloads:/downloads
+      - ./browser-profile:/data/browser-profile
     environment:
       # Docker publishes this container only to host loopback; it must listen on
       # the container interface for that forwarding to work.
       LUSTRE_BIND: 0.0.0.0
       LUSTRE_DB_PATH: /app/data/lustrestudio.db
       LUSTRE_DOWNLOAD_ROOT: /downloads
+      LUSTRE_CDP_URL: http://127.0.0.1:9222
     restart: unless-stopped
