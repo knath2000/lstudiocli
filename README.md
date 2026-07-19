@@ -29,7 +29,7 @@ npx tsx packages/cli/src/index.ts queue
 npx tsx packages/cli/src/index.ts logs JOB_ID
 ```
 
-The deliberate vertical-slice resolver recognizes `example.com` and downloads a stable test PNG. It is the only mock extraction behavior; no real provider scraping is included yet. The UI shell is intentionally public only on the local bind; every API request, including the queue data it renders, requires the token.
+The worker tries direct-file, Playmogo/Dood, MixDrop, then Playwright Chromium media-request capture. The browser fallback keeps browser cookies and final media URLs in memory only; traces record the resolver and stage but redact URL/cookie secrets. The UI has a server-folder picker constrained to `LUSTRE_DOWNLOAD_ROOT`, so downloads cannot escape the configured root. The UI shell is intentionally public only on the local bind; every API request, including the queue data it renders, requires the token.
 
 ## Deployment
 

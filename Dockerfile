@@ -1,12 +1,9 @@
-FROM node:22-bookworm-slim AS build
+FROM node:22-bookworm-slim
 WORKDIR /app
 COPY package*.json ./
 COPY packages ./packages
-RUN npm install
+RUN npm install && npx playwright install --with-deps chromium
 COPY . .
 RUN npm run build
-FROM node:22-bookworm-slim
-WORKDIR /app
-COPY --from=build /app /app
 ENV NODE_ENV=production
 CMD ["npm", "run", "start"]
