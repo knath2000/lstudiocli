@@ -1,0 +1,15 @@
+[Unit]
+Description=LustreStudio Server download service
+After=network-online.target
+[Service]
+Type=simple
+User=lustre
+WorkingDirectory=/opt/lustrestudio-server
+EnvironmentFile=/etc/lustrestudio-server.env
+ExecStart=/usr/bin/npm run start
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+[Install]
+WantedBy=multi-user.target

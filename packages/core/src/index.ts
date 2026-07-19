@@ -1,0 +1,45 @@
+import Database from 'better-sqlite3';
+import { createHash } from 'node:crypto';
+import { mkdir, rename, stat, writeFile } from 'node:fs/promises';
+import { basename, resolve } from 'node:path';
+
+export type JobState = 'queued' | 'running' | 'paused' | 'failed' | 'completed' | 'cancelled';
+export type Job = { id: string; pageUrl: string; preferredQuality: string | null; state: JobState; attempts: number; progress: number; outputPath: string | null; error: string | null; createdAt: string; updatedAt: string };
+export type Trace = { id: number; jobId: string; stage: string; message: string; createdAt: string };
+export type ResolvedSource = { url: string; headers: Record<string,string>; provider: string };
+export interface Resolver { name: string; resolve(pageUrl: string, quality: string | null): Promise<ResolvedSource[]> }
+
+export function validatePublicUrl(value: string): URL {
+  let url: URL; try { url = new URL(value); } catch { throw new Error('A valid http(s) URL is required'); }
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('Only credential-free http(s) URLs are allowed');
+  const h = url.hostname.toLowerCase();
+  if (h === 'localhost' || h.endsWith('.local') || /^127\.|^0\.|^10\.|^192\.168\.|^169\.254\.|^172\.(1[6-9]|2\d|3[01])\./.test(h) || h === '::1' || h.startsWith('fc') || h.startsWith('fd')) throw new Error('Private and local network URLs are not allowed');
+  return url;
+}
+
+export class Store {
+  db: Database.Database;
+  constructor(path: string) { this.db = new Database(path); this.db.pragma('journal_mode = WAL'); this.migrate(); }
+  migrate() { this.db.exec(`CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, page_url TEXT NOT NULL, preferred_quality TEXT, state TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, progress INTEGER NOT NULL DEFAULT 0, output_path TEXT, error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL); CREATE TABLE IF NOT EXISTS traces (id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT NOT NULL, stage TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL); CREATE INDEX IF NOT EXISTS traces_job_id ON traces(job_id);`); }
+  add(pageUrl: string, preferredQuality: string | null = null) { validatePublicUrl(pageUrl); const id = createHash('sha256').update(`${pageUrl}:${Date.now()}:${Math.random()}`).digest('hex').slice(0, 16), now = new Date().toISOString(); this.db.prepare('INSERT INTO jobs VALUES (?, ?, ?, ?, 0, 0, NULL, NULL, ?, ?)').run(id, pageUrl, preferredQuality, 'queued', now, now); this.trace(id, 'queued', 'Primary page URL queued; media URL will be resolved at execution.'); return this.get(id)!; }
+  get(id: string): Job | undefined { const r = this.db.prepare('SELECT * FROM jobs WHERE id=?').get(id) as any; return r && mapJob(r); }
+  list(): Job[] { return (this.db.prepare('SELECT * FROM jobs ORDER BY created_at DESC').all() as any[]).map(mapJob); }
+  traces(id: string): Trace[] { return this.db.prepare('SELECT id, job_id as jobId, stage, message, created_at as createdAt FROM traces WHERE job_id=? ORDER BY id').all(id) as Trace[]; }
+  trace(id: string, stage: string, message: string) { this.db.prepare('INSERT INTO traces (job_id,stage,message,created_at) VALUES (?,?,?,?)').run(id, stage, redact(message), new Date().toISOString()); }
+  claim(): Job | undefined { const r = this.db.prepare("SELECT * FROM jobs WHERE state='queued' ORDER BY created_at LIMIT 1").get() as any; if (!r) return; const updated = this.db.prepare("UPDATE jobs SET state='running', attempts=attempts+1, updated_at=? WHERE id=? AND state='queued'").run(new Date().toISOString(), r.id); return updated.changes ? this.get(r.id) : undefined; }
+  recover() { this.db.prepare("UPDATE jobs SET state='queued', updated_at=? WHERE state='running'").run(new Date().toISOString()); }
+  set(id: string, state: JobState, patch: Partial<Pick<Job,'progress'|'outputPath'|'error'>> = {}) { const fields = ['state=@state','updated_at=@updatedAt']; const data: any = { id, state, updatedAt: new Date().toISOString() }; if (patch.progress !== undefined) { fields.push('progress=@progress'); data.progress=patch.progress; } if (patch.outputPath !== undefined) { fields.push('output_path=@outputPath'); data.outputPath=patch.outputPath; } if (patch.error !== undefined) { fields.push('error=@error'); data.error=patch.error; } this.db.prepare(`UPDATE jobs SET ${fields.join(',')} WHERE id=@id`).run(data); return this.get(id); }
+}
+function mapJob(r: any): Job { return {id:r.id,pageUrl:r.page_url,preferredQuality:r.preferred_quality,state:r.state,attempts:r.attempts,progress:r.progress,outputPath:r.output_path,error:r.error,createdAt:r.created_at,updatedAt:r.updated_at}; }
+function redact(v: string) { return v.replace(/https?:\/\/[^\s]+/g, '[url redacted]').replace(/(cookie|authorization)=[^\s;]+/ig, '$1=[redacted]'); }
+
+export class MockResolver implements Resolver { name = 'mock'; async resolve(pageUrl: string): Promise<ResolvedSource[]> { const u = new URL(pageUrl); if (u.hostname === 'example.com') return [{url:'https://raw.githubusercontent.com/github/explore/main/topics/typescript/typescript.png', headers:{Referer: pageUrl, 'User-Agent':'lustrestudio-server/0.1', Accept:'*/*', 'Accept-Language':'en-US,en;q=0.9', Range:'bytes=0-'}, provider:'mock'}]; return []; } }
+export class QueueWorker {
+  private active = 0; private timer?: NodeJS.Timeout;
+  constructor(private store: Store, private resolvers: Resolver[], private root: string, private concurrency = 2, private fetcher: typeof fetch = fetch) {}
+  start() { this.store.recover(); this.timer=setInterval(()=>this.tick(),300); this.tick(); }
+  stop() { if(this.timer) clearInterval(this.timer); }
+  tick() { while (this.active < this.concurrency) { const job=this.store.claim(); if(!job) return; this.active++; void this.run(job).finally(()=>this.active--); } }
+  async run(job: Job) { try { this.store.trace(job.id,'extracting','Resolving primary page URL at execution.'); let results: ResolvedSource[]=[]; for(const r of this.resolvers) { this.store.trace(job.id,'resolver','Attempted resolver: '+r.name); results.push(...await r.resolve(job.pageUrl,job.preferredQuality)); } const source=results[0]; if(!source) throw new Error('No playable source found'); this.store.trace(job.id,'selected','Selected provider: '+source.provider); await this.download(job, source); } catch(e:any) { if(this.store.get(job.id)?.state !== 'cancelled') { this.store.set(job.id,'failed',{error:e.message}); this.store.trace(job.id,'failed',e.message); } } }
+  async download(job: Job, source: ResolvedSource) { await mkdir(this.root,{recursive:true}); const response=await this.fetcher(source.url,{headers:source.headers,redirect:'follow'}); this.store.trace(job.id,'transferring',`HTTP status ${response.status}`); if(!response.ok) throw new Error(`Download HTTP ${response.status}`); const type=response.headers.get('content-type') || ''; const bytes=Buffer.from(await response.arrayBuffer()); if (/text\/html|application\/(json|xml)/i.test(type) || /^\s*[<{]/.test(bytes.toString('utf8',0,80))) throw new Error('Rejected error body masquerading as media'); if(bytes.length < 1024) throw new Error('Rejected suspiciously small media file'); const final=resolve(this.root, `${job.id}-${basename(new URL(source.url).pathname) || 'media.bin'}`), staged=final+'.part'; if(!final.startsWith(resolve(this.root)+'/')) throw new Error('Output path escaped download root'); await writeFile(staged,bytes); const size=(await stat(staged)).size; if(size !== bytes.length) throw new Error('Staged file size validation failed'); await rename(staged,final); this.store.set(job.id,'completed',{progress:100,outputPath:final,error:null}); this.store.trace(job.id,'completed',`Validated local file (${size} bytes).`); }
+}

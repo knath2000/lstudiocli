@@ -1,0 +1,2 @@
+import { MockResolver, QueueWorker, Store } from '@lustrestudio/core'; import { dirname } from 'node:path'; import { mkdirSync } from 'node:fs';
+const dbPath=process.env.LUSTRE_DB_PATH||'./data/lustrestudio.db'; mkdirSync(dirname(dbPath),{recursive:true}); const worker=new QueueWorker(new Store(dbPath),[new MockResolver()],process.env.LUSTRE_DOWNLOAD_ROOT||'./downloads',Number(process.env.LUSTRE_CONCURRENCY||2)); worker.start(); console.log('lustrestudio worker started');

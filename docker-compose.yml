@@ -1,0 +1,13 @@
+services:
+  lustrestudio:
+    build: .
+    env_file: .env
+    ports:
+      - "127.0.0.1:8787:8787"
+    volumes:
+      - ./data:/app/data
+      - ./downloads:/downloads
+    environment:
+      LUSTRE_DB_PATH: /app/data/lustrestudio.db
+      LUSTRE_DOWNLOAD_ROOT: /downloads
+    restart: unless-stopped
