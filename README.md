@@ -31,6 +31,20 @@ npx tsx packages/cli/src/index.ts logs JOB_ID
 
 The worker tries direct-file, Playmogo/Dood, MixDrop, then Playwright Chromium media-request capture. The browser fallback keeps browser cookies and final media URLs in memory only; traces record the resolver and stage but redact URL/cookie secrets. The UI has a server-folder picker constrained to `LUSTRE_DOWNLOAD_ROOT`, so downloads cannot escape the configured root. The UI shell is intentionally public only on the local bind; every API request, including the queue data it renders, requires the token.
 
+### Local-browser verification
+
+If a provider rejects the seedbox IP during a normal Cloudflare check, tick **Verify in my local Chrome** when creating the job. It remains paused until the one-time handoff. On your desktop, start a separate Chrome profile with remote debugging, then run the local CLI from this checkout:
+
+```sh
+open -na "Google Chrome" --args --remote-debugging-port=9222 --user-data-dir=/tmp/lustre-local-chrome
+export LUSTRE_API_URL='https://lstudiocli.duckdns.org'
+export LUSTRE_TOKEN='your API token'
+export LUSTRE_LOCAL_CDP_URL='http://127.0.0.1:9222'
+npx tsx packages/cli/src/index.ts verify JOB_ID
+```
+
+Complete the provider’s normal verification in that local Chrome window and start playback. The companion captures one media request and its required context, sends it over the authenticated API, and the worker downloads immediately. The signed URL and cookies exist only in memory; restarting the worker discards them and a retry re-resolves the primary page URL.
+
 ## Deployment
 
 ```sh
