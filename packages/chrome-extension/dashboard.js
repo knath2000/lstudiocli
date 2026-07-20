@@ -1,0 +1,1 @@
+window.addEventListener('message',event=>{if(event.source!==window||event.data?.type!=='lustre-start-verification')return;chrome.runtime.sendMessage({type:'start',...event.data},result=>window.postMessage({type:'lustre-verification-status',message:result?.message||'Chrome extension did not respond.'},location.origin))});

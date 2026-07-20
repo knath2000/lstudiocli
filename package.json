@@ -7,8 +7,7 @@
     "dev": "concurrently -n api,worker -c cyan,green \"npm run dev -w @lustrestudio/api\" \"npm run dev -w @lustrestudio/worker\"",
     "build": "npm run build --workspaces",
     "test": "vitest run",
-    "start": "concurrently -n api,worker -c cyan,green \"npm run start -w @lustrestudio/api\" \"npm run start -w @lustrestudio/worker\"",
-    "install:local-verifier": "tsx packages/local-verifier/src/index.ts install"
+    "start": "concurrently -n api,worker -c cyan,green \"npm run start -w @lustrestudio/api\" \"npm run start -w @lustrestudio/worker\""
   },
   "devDependencies": {"@types/node": "^22.10.2", "concurrently": "^9.1.0", "tsx": "^4.19.2", "typescript": "^5.7.2", "vitest": "^2.1.8"}
 }

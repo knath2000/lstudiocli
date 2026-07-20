@@ -31,15 +31,9 @@ npx tsx packages/cli/src/index.ts logs JOB_ID
 
 The worker tries direct-file, Playmogo/Dood, MixDrop, then Playwright Chromium media-request capture. The browser fallback keeps browser cookies and final media URLs in memory only; traces record the resolver and stage but redact URL/cookie secrets. The UI has a server-folder picker constrained to `LUSTRE_DOWNLOAD_ROOT`, so downloads cannot escape the configured root. The UI shell is intentionally public only on the local bind; every API request, including the queue data it renders, requires the token.
 
-### Local-browser verification
+### Chrome verification extension
 
-If a provider rejects the seedbox IP during a normal Cloudflare check, install the local verifier once from this checkout:
-
-```sh
-npm run install:local-verifier
-```
-
-It asks once for the server URL and API token, stores the token in macOS Keychain, and starts at login. Thereafter, tick **Verify in my local Chrome** when creating a job: the web app opens the helper, it opens local Chrome, and you complete the provider’s normal verification and start playback. The companion captures one media request and its required context, sends it over the authenticated API, and the worker downloads immediately. The signed URL and cookies exist only in memory; restarting the worker discards them and a retry re-resolves the primary page URL.
+Load `packages/chrome-extension` as an unpacked Chrome extension, then open its options and save the seedbox URL plus API token. When **Verify in my local Chrome** is selected, the extension opens the provider page in your normal Chrome profile. After you complete the provider’s normal verification and start playback, it sends one media request and the required context through the authenticated API. Signed URLs and cookies are never written to the queue database or logs.
 
 ## Deployment
 
